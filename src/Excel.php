@@ -3,9 +3,11 @@
 namespace Maatwebsite\Excel;
 
 use Illuminate\Support\Collection;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Contracts\Filesystem\Factory;
+use Illuminate\Filesystem\FilesystemManager;
 use Illuminate\Foundation\Bus\PendingDispatch;
+use Illuminate\Contracts\Routing\ResponseFactory;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Maatwebsite\Excel\Exceptions\NoTypeDetectedException;
 
@@ -48,7 +50,12 @@ class Excel implements Exporter, Importer
     protected $queuedWriter;
 
     /**
-     * @var Factory
+     * @var ResponseFactory
+     */
+    protected $response;
+
+    /**
+     * @var FilesystemManager
      */
     protected $filesystem;
 
@@ -58,19 +65,22 @@ class Excel implements Exporter, Importer
     private $reader;
 
     /**
-     * @param Writer       $writer
-     * @param QueuedWriter $queuedWriter
-     * @param Reader       $reader
-     * @param Factory      $filesystem
+     * @param Writer            $writer
+     * @param QueuedWriter      $queuedWriter
+     * @param Reader            $reader
+     * @param ResponseFactory   $response
+     * @param FilesystemManager $filesystem
      */
     public function __construct(
         Writer $writer,
         QueuedWriter $queuedWriter,
         Reader $reader,
-        Factory $filesystem
+        ResponseFactory $response,
+        FilesystemManager $filesystem
     ) {
         $this->writer       = $writer;
         $this->reader       = $reader;
+        $this->response     = $response;
         $this->filesystem   = $filesystem;
         $this->queuedWriter = $queuedWriter;
     }
@@ -82,35 +92,31 @@ class Excel implements Exporter, Importer
     {
         $file = $this->export($export, $fileName, $writerType);
 
-        return response()->download($file, $fileName);
+        return $this->response->download($file, $fileName);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function store($export, string $filePath, string $disk = null, string $writerType = null)
+    public function store($export, string $filePath, string $disk = null, string $writerType = null, $diskOptions = [])
     {
         if ($export instanceof ShouldQueue) {
-            return $this->queue($export, $filePath, $disk, $writerType);
+            return $this->queue($export, $filePath, $disk, $writerType, $diskOptions);
         }
 
         $file = $this->export($export, $filePath, $writerType);
 
-        return $this->filesystem->disk($disk)->put($filePath, fopen($file, 'r+'));
+        return $this->filesystem->disk($disk)->put($filePath, fopen($file, 'r+'), $diskOptions);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function queue($export, string $filePath, string $disk = null, string $writerType = null)
+    public function queue($export, string $filePath, string $disk = null, string $writerType = null, $diskOptions = [])
     {
         $writerType = $this->findTypeByExtension($filePath, $writerType);
 
-        if (!$writerType) {
-            throw new NoTypeDetectedException();
-        }
-
-        return $this->queuedWriter->store($export, $filePath, $disk, $writerType);
+        return $this->queuedWriter->store($export, $filePath, $disk, $writerType, $diskOptions);
     }
 
     /**
@@ -119,7 +125,8 @@ class Excel implements Exporter, Importer
     public function import($import, $filePath, string $disk = null, string $readerType = null)
     {
         $readerType = $this->getReaderType($filePath, $readerType);
-        $response   = $this->reader->read($import, $filePath, $readerType, $disk);
+
+        $response =  $this->reader->read($import, $filePath, $readerType, $disk);
 
         if ($response instanceof PendingDispatch) {
             return $response;
@@ -169,10 +176,6 @@ class Excel implements Exporter, Importer
     {
         $writerType = $this->findTypeByExtension($fileName, $writerType);
 
-        if (!$writerType) {
-            throw new NoTypeDetectedException();
-        }
-
         return $this->writer->export($export, $writerType);
     }
 
@@ -182,7 +185,7 @@ class Excel implements Exporter, Importer
      *
      * @return string|null
      */
-    protected function findTypeByExtension($fileName, string $type = null)
+    protected function findTypeByExtension($fileName, string $type = null): string
     {
         if (null !== $type) {
             return $type;
@@ -207,10 +210,17 @@ class Excel implements Exporter, Importer
      * @param string|null         $readerType
      *
      * @throws NoTypeDetectedException
-     * @return string|null
+     * @return string
      */
-    private function getReaderType($filePath, string $readerType = null)
+    private function getReaderType($filePath, string $readerType = null): string
     {
-        return $this->findTypeByExtension($filePath, $readerType);
+        $readerType = $this->findTypeByExtension($filePath, $readerType);
+        $readerType = $readerType ?? IOFactory::identify($filePath);
+
+        if (null === $readerType) {
+            throw new NoTypeDetectedException();
+        }
+
+        return $readerType;
     }
 }
