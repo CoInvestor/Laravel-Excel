@@ -2,6 +2,7 @@
 
 namespace Maatwebsite\Excel;
 
+use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\ToArray;
 use Maatwebsite\Excel\Concerns\ToModel;
@@ -565,7 +566,7 @@ class Sheet
      */
     protected function tempFile(): string
     {
-        return $this->tmpPath . DIRECTORY_SEPARATOR . 'laravel-excel-' . str_random(16);
+        return $this->tmpPath . DIRECTORY_SEPARATOR . 'laravel-excel-' . Str::random(16);
     }
 
     /**
