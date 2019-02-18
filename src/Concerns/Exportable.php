@@ -41,7 +41,7 @@ trait Exportable
         $filePath = $filePath ?? $this->filePath ?? null;
 
         if (null === $filePath) {
-            throw new NoFilePathGivenException();
+            throw NoFilePathGivenException::export();
         }
 
         return $this->getExporter()->store(
@@ -67,7 +67,7 @@ trait Exportable
         $filePath = $filePath ?? $this->filePath ?? null;
 
         if (null === $filePath) {
-            throw new NoFilePathGivenException();
+            throw NoFilePathGivenException::export();
         }
 
         return $this->getExporter()->queue(
@@ -97,6 +97,6 @@ trait Exportable
      */
     private function getExporter(): Exporter
     {
-        return resolve(Exporter::class);
+        return app(Exporter::class);
     }
 }
